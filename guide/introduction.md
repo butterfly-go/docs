@@ -5,7 +5,7 @@ Butterfly is a lightweight microservice framework designed for the Go language, 
 ## Core Features
 
 - **Configuration Management**: Supports file configuration and Consul configuration center, flexibly controlled through environment variables
-- **Service Runtime**: Provides application lifecycle management with initialization function chain
+- **Service Runtime**: Provides application lifecycle management with Google Wire dependency injection
 - **Transport Layer Support**: 
   - HTTP server (based on Gin framework)
   - gRPC server support (port 9090)
