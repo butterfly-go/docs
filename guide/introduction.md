@@ -28,3 +28,7 @@ Butterfly is a lightweight microservice framework designed for the Go language, 
 ```bash
 go get butterfly.orx.me/core
 ```
+
+## Related: Butter
+
+[Butter](https://github.com/orvice/butter) is an agent orchestration service built on Butterfly. If you run Butter and want developer machines to execute tasks over a persistent gRPC link, see [Butter: daemon remote agents](./butter-daemon-agents.md).

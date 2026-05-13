@@ -20,6 +20,7 @@ export default defineConfig({
           { text: 'Application Structure', link: '/guide/application-structure' },
           { text: 'HTTP Service', link: '/guide/http' },
           { text: 'gRPC Service', link: '/guide/grpc' },
+          { text: 'Butter: daemon agents', link: '/guide/butter-daemon-agents' },
         ],
       },
       {
