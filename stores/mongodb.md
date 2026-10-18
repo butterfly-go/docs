@@ -7,35 +7,31 @@ store:
   mongo:
     primary:
       uri: "mongodb://localhost:27017"
-    secondary:
-      uri: "mongodb://localhost:27018"
 ```
+
+The key (`cache`, `main`, ...) is the name you pass to the getter. See [Data stores](/stores/overview) for behavior shared by all stores, and the [configuration reference](/guide/configuration#core-configuration-reference) for every option.
 
 ## Usage
 
 ```go
 import (
+    "context"
+
     "butterfly.orx.me/core/store/mongo"
-    "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// Get MongoDB client through configuration key
-func getUserCollection() *mongo.Collection {
-    // "primary" corresponds to store.mongo.primary in configuration file
+func findUser(ctx context.Context, id string) (*User, error) {
+    // "primary" is store.mongo.primary in the configuration file.
     client := mongo.GetClient("primary")
-    return client.Database("myapp").Collection("users")
-}
+    collection := client.Database("myapp").Collection("users")
 
-// Usage example
-func findUser(id string) (*User, error) {
-    collection := getUserCollection()
-    
     var user User
-    err := collection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&user)
-    if err != nil {
+    if err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
         return nil, err
     }
-    
     return &user, nil
 }
 ```
+
+The framework's `mongo` package only provides `GetClient`. Types such as `*mongo.Collection` come from `go.mongodb.org/mongo-driver/v2/mongo`.

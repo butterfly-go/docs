@@ -1,102 +1,55 @@
 # Quick Start
 
-## Basic Application Example
+## A minimal service
 
 ```go
 package main
 
 import (
-    "github.com/gin-gonic/gin"
     "butterfly.orx.me/core/app"
+    "github.com/gin-gonic/gin"
 )
 
 func main() {
-    // Create application configuration
-    config := &app.Config{
-        Service:   "my-service",
-        Namespace: "my-namespace", // optional namespace prefix for config key
+    app.New(&app.Config{
+        Service: "hello",
         Router: func(r *gin.Engine) {
-            r.GET("/ping", func(c *gin.Context) {
-                c.JSON(200, gin.H{"message": "pong"})
-            })
+            r.GET("/ping", func(c *gin.Context) { c.JSON(200, gin.H{"message": "pong"}) })
         },
-    }
-    
-    // Create and run application
-    application := app.New(config)
-    application.Run()
+    }).Run()
 }
 ```
 
-## Creating a Complete Application
+## Run it
 
-```go
-package main
+Save the program as `main.go`, then run it with a local config file and tracing off:
 
-import (
-    "context"
-    "net/http"
-    
-    "butterfly.orx.me/core/app"
-    "butterfly.orx.me/core/store/mongo"
-    "butterfly.orx.me/core/store/redis"
-    "butterfly.orx.me/core/store/gorm"
-    "github.com/gin-gonic/gin"
-    "google.golang.org/grpc"
-    pb "your-service/proto"
-)
+```bash
+go mod init hello && go mod tidy
 
-// Custom configuration structure
-type MyConfig struct {
-    APIKey     string `yaml:"api_key"`
-    MaxRetries int    `yaml:"max_retries"`
-}
+echo '{}' > config.yaml
+export BUTTERFLY_CONFIG_TYPE=file
+export BUTTERFLY_CONFIG_FILE_PATH=./config.yaml
+export BUTTERFLY_TRACING_DISABLE=true
 
-func (c *MyConfig) Print() {
-    // Implement configuration printing logic
-}
-
-func main() {
-    config := &app.Config{
-        Service:   "user-service",
-        Namespace: "my-namespace", // optional: config key becomes "my-namespace/user-service"
-        Config:    &MyConfig{},
-        
-        // HTTP route registration
-        Router: setupHTTPRoutes,
-        
-        // gRPC service registration
-        GRPCRegister: setupGRPCServer,
-        
-        // Initialization functions
-        InitFunc: []func() error{
-            initDatabase,
-            initCache,
-            initMessageQueue,
-        },
-        
-        // Teardown functions
-        TeardownFunc: []func() error{
-            closeDatabase,
-            closeCache,
-        },
-    }
-    
-    app := app.New(config)
-    app.Run()
-}
+go run .
 ```
 
-## Initialization Flow
+```bash
+curl localhost:8080/ping      # your API
+curl localhost:2223/readyz    # readiness, on the admin port
+curl localhost:2223/metrics   # Prometheus metrics
+```
 
-When `app.Run()` is called, the following happens automatically:
+Press Ctrl-C and the service drains in-flight requests and shuts down cleanly.
 
-1. **Config & Store connections** — config backend (File or Consul) is created, YAML is parsed, and all configured store clients (Redis, MongoDB, SQL, S3) are initialized
-2. **App config** — your custom config struct is unmarshaled from the same YAML
-3. **Logging** — `slog` is configured based on `log` section (level, format, source)
-4. **Metrics** — Prometheus registry and OTEL meter provider are set up, metrics endpoint starts on `:2223`
-5. **Tracing** — OTEL tracer provider is configured (gRPC or HTTP exporter)
-6. **Custom InitFunc** — your user-defined initialization functions run
-7. **Servers** — HTTP server starts on `:8080`, gRPC server on `:9090` (if configured)
+::: tip
+The default configuration backend is Consul. Without the `BUTTERFLY_CONFIG_*` variables above, the service tries to read its configuration from there. See [Configuration](/guide/configuration).
+:::
 
-Store connections include automatic cleanup — if initialization fails partway through, already-created connections are properly closed.
+## Where to go next
+
+- [Application structure](/guide/application-structure): all `app.Config` fields, a complete example and the startup order.
+- [Configuration](/guide/configuration): the config file, stores and your own settings.
+- [Data stores](/stores/overview): Redis, SQL, GORM, MongoDB, S3.
+- [Example](/advanced/example): a complete user service.

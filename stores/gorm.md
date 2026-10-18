@@ -1,81 +1,54 @@
 # GORM (MySQL)
 
-GORM connections are created manually via `NewDB()` and managed by the application. The framework automatically integrates OpenTelemetry tracing plugin for GORM queries.
-
-## Setup
-
-```go
-import (
-    "butterfly.orx.me/core/store/gorm"
-)
-
-func initDatabase() error {
-    db, err := gorm.NewDB("user:password@tcp(localhost:3306)/dbname?charset=utf8mb4")
-    if err != nil {
-        return err
-    }
-    
-    // Auto migrate
-    db.AutoMigrate(&User{}, &Order{})
-    
-    // Store to global variable or dependency injection container
-    database = db
-    return nil
-}
-```
-
-## Usage Example
-
-```go
-func createUser(c *gin.Context) {
-    var user User
-    if err := c.ShouldBindJSON(&user); err != nil {
-        c.JSON(400, gin.H{"error": err.Error()})
-        return
-    }
-    
-    if err := database.Create(&user).Error; err != nil {
-        c.JSON(500, gin.H{"error": "failed to create user"})
-        return
-    }
-    
-    c.JSON(201, user)
-}
-```
-
-## Connection Pool Configuration
-
-```go
-sqlDB, _ := db.DB()
-sqlDB.SetMaxIdleConns(10)
-sqlDB.SetMaxOpenConns(100)
-sqlDB.SetConnMaxLifetime(time.Hour)
-```
-
-## Multiple Databases
-
-Define multiple database connections in the configuration file:
+## Configuration
 
 ```yaml
 store:
   db:
-    primary:
-      host: "primary.db.com"
+    main:
+      driver: "mysql"        # GORM handles are created for MySQL entries only
+      host: "localhost"
       port: 3306
-      user: "app"
-      password: "secret"
-      db_name: "main"
-    analytics:
-      host: "analytics.db.com"
-      port: 3306
-      user: "reader"
-      password: "secret"
-      db_name: "analytics"
+      user: "root"
+      password: "password"
+      db_name: "myapp"
 ```
 
-Use by key when accessing:
+The key (`cache`, `main`, ...) is the name you pass to the getter. See [Data stores](/stores/overview) for behavior shared by all stores, and the [configuration reference](/guide/configuration#core-configuration-reference) for every option.
+
+## Usage
+
+For a `store.db` entry whose driver is MySQL, the framework also builds a GORM handle on the same connection pool, with the tracing plugin installed. Get it with `gorm.GetDB`. It is not created for PostgreSQL entries, so `GetDB` returns `nil` for them. Use `sqldb.GetDB` there.
 
 ```go
-primaryDB := sqldb.GetDB("primary")
-analyticsDB := sqldb.GetDB("analytics")
+import (
+    "context"
+    "errors"
+
+    "butterfly.orx.me/core/store/gorm"
+)
+
+func createUser(ctx context.Context, user *User) error {
+    db := gorm.GetDB("main") // store.db.main
+    return db.WithContext(ctx).Create(user).Error
+}
+
+func findUser(ctx context.Context, id uint) (*User, error) {
+    var user User
+    err := gorm.GetDB("main").WithContext(ctx).First(&user, id).Error
+    if errors.Is(err, gorm.ErrRecordNotFound) {
+        return nil, nil
+    }
+    return &user, err
+}
 ```
+
+The `gorm` package re-exports the commonly used GORM types (`DB`, `Model`, `DeletedAt`, ...) and errors (`ErrRecordNotFound`, `ErrDuplicatedKey`, ...), so you usually do not need to import `gorm.io/gorm` yourself. Run migrations from an `InitFunc`:
+
+```go
+InitFunc: []func() error{
+    func() error { return gorm.GetDB("main").AutoMigrate(&User{}) },
+},
+```
+
+If you want a GORM connection that is not in the configuration file, `gorm.NewDB(dsn)` opens a MySQL connection with tracing and pool metrics. The framework does not close those. You own them.

@@ -9,63 +9,49 @@ store:
       addr: "localhost:6379"
       password: ""
       db: 0
-    session:
-      addr: "localhost:6380"
-      password: ""
-      db: 1
 ```
+
+The key (`cache`, `main`, ...) is the name you pass to the getter. See [Data stores](/stores/overview) for behavior shared by all stores, and the [configuration reference](/guide/configuration#core-configuration-reference) for every option.
 
 ## Usage
 
 ```go
 import (
-    "butterfly.orx.me/core/store/redis"
+    "context"
     "encoding/json"
+    "errors"
+    "time"
+
+    "butterfly.orx.me/core/store/redis"
+    goredis "github.com/redis/go-redis/v9"
 )
 
-// Get Redis client
-func getCacheClient() *redis.Client {
-    // "cache" corresponds to store.redis.cache in configuration file
-    return redis.GetClient("cache")
-}
-```
+func getUserFromCache(ctx context.Context, id string) (*User, error) {
+    // "cache" is store.redis.cache in the configuration file.
+    client := redis.GetClient("cache")
 
-## Cache Example
-
-```go
-func getUserFromCache(userId string) (*User, error) {
-    client := getCacheClient()
-    
-    // Try to get from cache
-    val, err := client.Get(context.Background(), "user:"+userId).Result()
-    if err == redis.Nil {
-        return nil, nil // Cache miss
+    val, err := client.Get(ctx, "user:"+id).Result()
+    if errors.Is(err, goredis.Nil) {
+        return nil, nil // cache miss
     }
     if err != nil {
         return nil, err
     }
-    
+
     var user User
     if err := json.Unmarshal([]byte(val), &user); err != nil {
         return nil, err
     }
-    
     return &user, nil
 }
 
-// Set cache
-func setUserCache(user *User) error {
-    client := getCacheClient()
-    
+func setUserCache(ctx context.Context, user *User) error {
     data, err := json.Marshal(user)
     if err != nil {
         return err
     }
-    
-    return client.Set(context.Background(), 
-        "user:"+user.ID, 
-        data, 
-        time.Hour,
-    ).Err()
+    return redis.GetClient("cache").Set(ctx, "user:"+user.ID, data, time.Hour).Err()
 }
 ```
+
+`redis.Nil` is not exported by the framework. Import go-redis for it, as above.
