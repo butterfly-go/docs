@@ -2,8 +2,10 @@
 
 ## Docker
 
+The default configuration backend is Consul. In a container without Consul, select the file backend explicitly.
+
 ```dockerfile
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -15,12 +17,19 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o service .
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+WORKDIR /app
 COPY --from=builder /app/service .
 COPY config.yaml .
 
+ENV BUTTERFLY_CONFIG_TYPE=file \
+    BUTTERFLY_CONFIG_FILE_PATH=/app/config.yaml
+
+# Use the exec form of CMD, so the service is PID 1 and receives SIGTERM from
+# `docker stop`. The shell form would put `sh` in between and swallow the signal.
 CMD ["./service"]
 ```
+
+For production you will usually leave out `config.yaml` and use Consul instead (`BUTTERFLY_CONFIG_TYPE=consul`, plus the Consul address). See [Configuration](/guide/configuration).
 
 ## Kubernetes
 
@@ -39,73 +48,50 @@ spec:
       labels:
         app: user-service
     spec:
+      # Longer than ShutdownTimeout (default 30s), see below.
+      terminationGracePeriodSeconds: 45
       containers:
       - name: user-service
         image: your-registry/user-service:latest
         ports:
-        - containerPort: 8080  # HTTP
-        - containerPort: 9090  # gRPC
-        - containerPort: 2223  # Metrics
+        - name: http
+          containerPort: 8080
+        - name: grpc            # only when GRPCRegister is set
+          containerPort: 9090
+        - name: admin           # /metrics, /healthz, /readyz
+          containerPort: 2223
         env:
         - name: BUTTERFLY_CONFIG_TYPE
           value: "consul"
         - name: BUTTERFLY_CONFIG_CONSUL_ADDRESS
           value: "consul:8500"
         - name: BUTTERFLY_TRACING_ENDPOINT
-          value: "otel-collector:4318"
+          value: "otel-collector:4317"   # gRPC is the default provider
         livenessProbe:
           httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
+            path: /healthz
+            port: admin
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 5
+            path: /readyz
+            port: admin
           periodSeconds: 5
 ```
 
-## Graceful Shutdown
+Notes:
 
-The framework automatically handles graceful shutdown. Register cleanup functions via `TeardownFunc`:
+- **Probes go to the admin port.** The framework serves `/healthz` and `/readyz` itself, so do not implement them in your router. See [Health checks](/observability/health).
+- **A gRPC-only service** can use the native probe instead, `readinessProbe: { grpc: { port: 9090 } }`. It reports the same state as `/readyz`.
+- **The admin port serves metrics.** Point Prometheus at `:2223/metrics`, and do not expose that port outside the cluster.
 
-```go
-config := &app.Config{
-    Service: "my-service",
-    TeardownFunc: []func() error{
-        func() error {
-            sqlDB, _ := db.DB()
-            return sqlDB.Close()
-        },
-        func() error {
-            return messageQueue.Close()
-        },
-    },
-}
+### Rolling updates without dropped requests
+
+When a pod is deleted, Kubernetes sends `SIGTERM` and, in parallel, removes the pod from the Service endpoints. The second takes a moment to propagate, so for a short time traffic still arrives at a pod that is shutting down. To cover that gap:
+
+```yaml
+server:
+  shutdown_delay: 5s   # report not-ready, keep serving for 5s, then stop
 ```
 
-## Performance Optimization
-
-1. **Database Connection Pool**
-   ```go
-   sqlDB, _ := db.DB()
-   sqlDB.SetMaxIdleConns(10)
-   sqlDB.SetMaxOpenConns(100)
-   sqlDB.SetConnMaxLifetime(time.Hour)
-   ```
-
-2. **Caching Strategy**
-   - Implement multi-level caching
-   - Use Redis as distributed cache
-   - Set reasonable cache expiration times
-
-3. **Enable gzip Compression**
-   ```go
-   import "github.com/gin-contrib/gzip"
-   
-   r.Use(gzip.Gzip(gzip.DefaultCompression))
-   ```
-
-4. **Connection Pools** for HTTP clients, databases, and Redis
+The shutdown sequence is: report not-ready, wait `shutdown_delay`, drain in-flight requests, run teardown functions. All of it, including the delay, must fit in `ShutdownTimeout` (default 30s), and the pod's `terminationGracePeriodSeconds` must be longer than that, or Kubernetes sends `SIGKILL` before the pod finishes. The 45 above leaves some margin over the default timeout. See [Graceful shutdown](/guide/graceful-shutdown).

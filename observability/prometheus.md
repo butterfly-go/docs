@@ -1,8 +1,6 @@
-# Prometheus Metrics
+# Prometheus metrics
 
-The framework automatically exposes the `/metrics` endpoint on port 2223.
-
-## Custom Metrics
+The framework automatically exposes the `/metrics` endpoint on port 2223 (change it with `server.admin.addr`):
 
 ```go
 import (
@@ -35,11 +33,8 @@ func init() {
     registry.MustRegister(requestDuration)
     registry.MustRegister(activeUsers)
 }
-```
 
-## Using Metrics in Middleware
-
-```go
+// Use metrics
 func measureRequest(c *gin.Context) {
     start := time.Now()
     
@@ -54,8 +49,7 @@ func measureRequest(c *gin.Context) {
 }
 ```
 
-## Accessing Metrics
-
+Access metrics:
 ```bash
 curl http://localhost:2223/metrics
 ```

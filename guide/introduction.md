@@ -1,30 +1,23 @@
 # Introduction
 
-Butterfly is a lightweight microservice framework designed for the Go language, aimed at simplifying the development and deployment of microservices. The framework provides core functionalities such as configuration management, service runtime, HTTP/gRPC support, data storage, and observability, allowing developers to focus on implementing business logic.
+Butterfly is a Go microservice framework. You supply routes, gRPC services and settings. Butterfly provides the rest of what a production service needs: configuration, tracing, metrics, structured logging, data store clients, health checks and graceful shutdown.
 
-## Core Features
+## What you get
 
-- **Configuration Management**: Supports file configuration and Consul configuration center, flexibly controlled through environment variables
-- **Service Runtime**: Provides application lifecycle management with Google Wire dependency injection
-- **Transport Layer Support**: 
-  - HTTP server (based on Gin framework)
-  - gRPC server support (port 9090)
-  - Twirp RPC support
-- **Data Storage**: 
-  - GORM (MySQL and other relational databases)
-  - MongoDB v2 driver
-  - Redis client
-  - Native SQL database connections
-  - S3-compatible object storage (AWS SDK v2)
-- **Observability**:
-  - Prometheus metrics collection and exposure (port 2223)
-  - OpenTelemetry distributed tracing
-  - Structured logging system (based on `log/slog`)
-- **Middleware Integration**: Automatic integration of OpenTelemetry middleware for request tracing
-- **Testing Utilities**: Mock logging support for unit testing
+- **HTTP and gRPC servers** ([Gin](https://github.com/gin-gonic/gin), grpc-go, optional Twirp), each with tracing, request ids, access or call logs and panic recovery already installed. See [HTTP](/guide/http) and [gRPC](/guide/grpc).
+- **Configuration** from a YAML file or Consul, with your own settings in the same document. See [Configuration](/guide/configuration).
+- **Stores** configured by name: Redis, MySQL and PostgreSQL (`database/sql` and GORM), MongoDB, S3-compatible object storage. Instrumented, health-checked and closed on shutdown. See [Data stores](/stores/overview).
+- **Observability**: OpenTelemetry tracing, Prometheus metrics, `log/slog` logging with trace correlation. See [Prometheus](/observability/prometheus), [Tracing](/observability/tracing) and [Logging](/observability/logging).
+- **Operations**: `/healthz` and `/readyz` plus gRPC health on a separate admin port, and a [graceful shutdown](/guide/graceful-shutdown) that drains traffic and releases resources in order. See [Health checks](/observability/health).
+
+## Requirements
+
+Go 1.26 or newer.
 
 ## Installation
 
 ```bash
 go get butterfly.orx.me/core
 ```
+
+Next, the [Quick Start](/guide/quick-start).

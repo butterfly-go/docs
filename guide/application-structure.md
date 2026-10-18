@@ -1,168 +1,111 @@
-# Application Structure
+# Application structure
 
-## App Config
+An application is an `app.Config` passed to `app.New(...).Run()`. This page covers the fields, a complete example and the order in which the framework starts things.
 
-The `app.Config` struct is the central configuration for your application:
+## `app.Config`
 
-```go
-config := &app.Config{
-    Service:   "user-service",
-    Namespace: "my-namespace",
-    Config:    &MyConfig{},
-    
-    // HTTP route registration
-    Router: setupHTTPRoutes,
-    
-    // gRPC service registration
-    GRPCRegister: setupGRPCServer,
-    
-    // Initialization functions
-    InitFunc: []func() error{
-        initDatabase,
-        initCache,
-        initMessageQueue,
-    },
-    
-    // Teardown functions
-    TeardownFunc: []func() error{
-        closeDatabase,
-        closeCache,
-    },
-}
-```
+An application is an `app.Config` handed to `app.New(...).Run()`.
 
-## Custom Configuration
+| Field | Purpose |
+|---|---|
+| `Service` | Service name. Used for the config key, tracing and the HTTP middleware. |
+| `Namespace` | Optional prefix of the Consul key (`Namespace/Service`). See [Configuration](/guide/configuration). |
+| `Config` | Optional pointer to your own settings struct. See [Configuration](/guide/configuration#your-application-config). |
+| `Router` | `func(*gin.Engine)`. Registers HTTP routes and middleware. See [HTTP](/guide/http). |
+| `GRPCRegister` | `func(*grpc.Server)`. Registers gRPC services. Setting it starts the gRPC server. See [gRPC](/guide/grpc). |
+| `GRPCUnaryInterceptors`, `GRPCStreamInterceptors` | Your own gRPC interceptors. |
+| `InitFunc` | Functions run at startup, in order, after the framework's own setup. A returned error stops startup. |
+| `TeardownFunc` | Functions run at shutdown, in reverse order. |
+| `ShutdownTimeout` | Time budget of the whole shutdown. Default 30s. |
+| `HealthChecks` | Extra readiness checks. See [Health checks](/observability/health). |
 
-Define a custom configuration struct that will be populated from your YAML config:
-
-```go
-type MyConfig struct {
-    APIKey     string `yaml:"api_key"`
-    MaxRetries int    `yaml:"max_retries"`
-}
-
-func (c *MyConfig) Print() {
-    // Implement configuration printing logic
-}
-```
-
-## Route Setup
-
-```go
-func setupHTTPRoutes(r *gin.Engine) {
-    // API route group
-    api := r.Group("/api/v1")
-    {
-        api.GET("/users", listUsers)
-        api.GET("/users/:id", getUser)
-        api.POST("/users", createUser)
-        api.PUT("/users/:id", updateUser)
-        api.DELETE("/users/:id", deleteUser)
-    }
-    
-    // Health checks
-    r.GET("/health", healthCheck)
-    r.GET("/ready", readinessCheck)
-}
-```
-
-## gRPC Setup
-
-```go
-func setupGRPCServer(s *grpc.Server) {
-    // Register gRPC services
-    pb.RegisterUserServiceServer(s, &userServiceServer{})
-}
-```
-
-## Complete Example
+## A complete application
 
 ```go
 package main
 
 import (
     "context"
-    "fmt"
     "net/http"
-    "time"
-    "log/slog"
-    
+
     "butterfly.orx.me/core/app"
     "butterfly.orx.me/core/log"
-    "butterfly.orx.me/core/store/gorm"
     "butterfly.orx.me/core/store/redis"
     "github.com/gin-gonic/gin"
-    gormDriver "gorm.io/gorm"
+    "google.golang.org/grpc"
+    pb "your-service/proto"
 )
 
-var (
-    db     *gormDriver.DB
-    cache  *redis.Client
-    logger = slog.With("service", "user-service")
-)
-
-type User struct {
-    gormDriver.Model
-    Name     string `json:"name" binding:"required"`
-    Email    string `json:"email" binding:"required,email"`
-    Password string `json:"-"`
+type MyConfig struct {
+    APIKey string `yaml:"api_key"`
 }
 
-type Config struct {
-    JWTSecret string `yaml:"jwt_secret"`
-    MaxUsers  int    `yaml:"max_users"`
-}
+func (c *MyConfig) Print() {}
 
-func (c *Config) Print() {
-    logger.Info("config loaded", 
-        "max_users", c.MaxUsers,
-    )
-}
+var cfg = &MyConfig{}
 
 func main() {
-    config := &app.Config{
-        Service: "user-service",
-        Config:  &Config{},
-        Router:  setupRoutes,
+    app.New(&app.Config{
+        Service:   "user-service",
+        Namespace: "my-namespace", // Consul key: my-namespace/user-service
+        Config:    cfg,
+
+        Router:       setupHTTPRoutes,
+        GRPCRegister: setupGRPCServer,
+
         InitFunc: []func() error{
-            initDB,
-            initCache,
+            warmCache,
         },
-    }
-    
-    app := app.New(config)
-    app.Run()
+        TeardownFunc: []func() error{
+            flushMetrics,
+        },
+    }).Run()
 }
 
-func initDB() error {
-    var err error
-    db, err = gorm.NewDB("root:password@tcp(localhost:3306)/users?charset=utf8mb4")
-    if err != nil {
-        return fmt.Errorf("failed to connect database: %w", err)
-    }
-    return db.AutoMigrate(&User{})
-}
-
-func initCache() error {
-    cache = redis.GetClient("cache")
-    if cache == nil {
-        logger.Warn("cache not configured")
-    }
-    return nil
-}
-
-func setupRoutes(r *gin.Engine) {
-    r.GET("/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "healthy"})
-    })
-    
+func setupHTTPRoutes(r *gin.Engine) {
     api := r.Group("/api/v1")
     {
-        api.GET("/users", listUsers)
         api.GET("/users/:id", getUser)
         api.POST("/users", createUser)
-        api.PUT("/users/:id", updateUser)
-        api.DELETE("/users/:id", deleteUser)
     }
+    // /healthz, /readyz and /metrics are served by the framework on the admin
+    // port. Do not add them here.
 }
+
+func setupGRPCServer(s *grpc.Server) {
+    pb.RegisterUserServiceServer(s, &userServiceServer{})
+}
+
+func getUser(c *gin.Context) {
+    log.FromContext(c.Request.Context()).Info("loading user", "id", c.Param("id"))
+    c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+// InitFunc: runs after the stores are connected, so redis.GetClient works.
+func warmCache() error {
+    return redis.GetClient("cache").Set(context.Background(), "warm", "1", 0).Err()
+}
+
+func flushMetrics() error { return nil }
 ```
+
+## Startup order
+
+`Run` does this, in order. A failure at any step stops startup (`Run` panics with the error, `RunContext` returns it).
+
+1. Choose the configuration backend (file or Consul).
+2. Load your application config into `Config`.
+3. Load the core configuration.
+4. Configure logging (`log.level`, `log.format`, `log.add_source`).
+5. Resolve and validate the listen addresses (`server.*`).
+6. Set up metrics.
+7. Start the admin server (`/metrics`, `/healthz`, `/readyz`). `/readyz` answers `503 starting` from now until the servers are up.
+8. Set up tracing.
+9. Connect the stores: Redis, SQL, GORM, Mongo, S3.
+10. Register the health checks.
+11. Run your `InitFunc`s, in order.
+12. Start the HTTP server and, if `GRPCRegister` is set, the gRPC server. `/readyz` now reports `ready`.
+
+Because the stores are connected before your `InitFunc`s run, you can call `redis.GetClient(...)`, `sqldb.GetDB(...)` and the like from them.
+
+For what happens on shutdown, see [Graceful shutdown](/guide/graceful-shutdown).

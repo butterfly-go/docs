@@ -1,6 +1,9 @@
 # Testing
 
-## Unit Test Example
+Your `Router` and `GRPCRegister` functions are ordinary Go functions, so you can test handlers without starting the framework.
+
+
+## Testing routes
 
 ```go
 package main
@@ -16,8 +19,10 @@ import (
 )
 
 func TestPingRoute(t *testing.T) {
+    // Set test mode
     gin.SetMode(gin.TestMode)
     
+    // The Router function is plain Go: apply it to a bare engine.
     config := &app.Config{
         Service: "test-service",
         Router: func(r *gin.Engine) {
@@ -26,21 +31,29 @@ func TestPingRoute(t *testing.T) {
             })
         },
     }
-    
+
     router := gin.New()
     config.Router(router)
     
+    // Create test request
     w := httptest.NewRecorder()
     req, _ := http.NewRequest("GET", "/ping", nil)
     
+    // Execute request
     router.ServeHTTP(w, req)
     
+    // Verify response
     assert.Equal(t, 200, w.Code)
     assert.Contains(t, w.Body.String(), "pong")
 }
 ```
 
-## Mock Logger (testsuite)
+A bare `gin.New()` engine does not have the framework's built-in middleware (request id, access log, panic recovery). If a test depends on them, add the pieces you need yourself. Handlers that call `log.FromContext(ctx)` work without it, because it falls back to `slog.Default()`.
+
+Do not call `app.Run()` or `app.RunContext()` more than once per test process, because it registers process-wide state such as the metrics registry. See [Application](/guide/graceful-shutdown#driving-the-app-from-a-context).
+
+
+## Capturing logs
 
 The framework provides a mock logger for capturing and asserting log output in unit tests:
 
@@ -56,7 +69,7 @@ func TestUserCreation(t *testing.T) {
     // Create mock logger and capture helper
     logger, mockLog := testsuite.NewMockLog()
     
-    // Pass logger directly to code under test
+    // Option 1: Pass logger directly to code under test
     service := NewUserService(logger)
     service.CreateUser("test@example.com")
     
@@ -87,7 +100,7 @@ func TestUserCreation(t *testing.T) {
 func TestWithDefaultLogger(t *testing.T) {
     _, mockLog := testsuite.NewMockLog()
     
-    // Set as the default slog logger (returns restore function)
+    // Option 2: Set as the default slog logger (returns restore function)
     restore := mockLog.SetAsDefault()
     defer restore()
     
@@ -97,36 +110,5 @@ func TestWithDefaultLogger(t *testing.T) {
     if !mockLog.ContainsMessage("this will be captured") {
         t.Error("message not captured")
     }
-}
-```
-
-## Testing with Wire
-
-Wire makes testing easier by allowing you to swap implementations:
-
-```go
-// test/wire_test.go
-//go:build wireinject
-// +build wireinject
-
-package test
-
-import (
-    "github.com/google/wire"
-    "your-app/internal/test/mocks"
-)
-
-var TestSet = wire.NewSet(
-    mocks.ProvideMockDatabase,
-    mocks.ProvideMockRedis,
-    mocks.ProvideMockLogger,
-    wire.ProvideUserRepository,
-    wire.ProvideUserService,
-    wire.ProvideUserHandler,
-)
-
-func InitializeTestApp() (*UserHandler, error) {
-    wire.Build(TestSet)
-    return &UserHandler{}, nil
 }
 ```

@@ -6,7 +6,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide/introduction' },
-      { text: 'Stores', link: '/stores/gorm' },
+      { text: 'Stores', link: '/stores/overview' },
       { text: 'Observability', link: '/observability/prometheus' },
       { text: 'Advanced', link: '/advanced/wire' },
     ],
@@ -20,11 +20,13 @@ export default defineConfig({
           { text: 'Application Structure', link: '/guide/application-structure' },
           { text: 'HTTP Service', link: '/guide/http' },
           { text: 'gRPC Service', link: '/guide/grpc' },
+          { text: 'Graceful Shutdown', link: '/guide/graceful-shutdown' },
         ],
       },
       {
         text: 'Data Stores',
         items: [
+          { text: 'Overview', link: '/stores/overview' },
           { text: 'GORM (MySQL)', link: '/stores/gorm' },
           { text: 'MongoDB', link: '/stores/mongodb' },
           { text: 'Redis', link: '/stores/redis' },
@@ -36,6 +38,7 @@ export default defineConfig({
         text: 'Observability',
         items: [
           { text: 'Prometheus Metrics', link: '/observability/prometheus' },
+          { text: 'Health Checks', link: '/observability/health' },
           { text: 'OpenTelemetry Tracing', link: '/observability/tracing' },
           { text: 'Logging', link: '/observability/logging' },
         ],
@@ -46,6 +49,7 @@ export default defineConfig({
           { text: 'Dependency Injection (Wire)', link: '/advanced/wire' },
           { text: 'Testing', link: '/advanced/testing' },
           { text: 'Deployment', link: '/advanced/deployment' },
+          { text: 'Example: User Service', link: '/advanced/example' },
           { text: 'FAQ', link: '/advanced/faq' },
         ],
       },

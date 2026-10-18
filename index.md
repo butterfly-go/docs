@@ -15,13 +15,13 @@ features:
   - title: Configuration Management
     details: Supports file-based YAML and Consul configuration center, with flexible environment variable overrides using the BUTTERFLY_ prefix.
   - title: Transport Layer
-    details: Built-in HTTP server (Gin), gRPC server on port 9090, and Twirp RPC support out of the box.
+    details: HTTP (Gin) and gRPC servers with tracing, request ids, access logs and panic recovery built in. Twirp is supported too.
   - title: Data Storage
     details: Integrated support for GORM, MongoDB, Redis, native SQL, and S3-compatible object storage (AWS SDK v2).
   - title: Observability
-    details: Prometheus metrics on port 2223, OpenTelemetry distributed tracing, and structured logging via log/slog.
+    details: Prometheus metrics, OpenTelemetry tracing, and structured logging via log/slog, with trace ids in every log line.
   - title: Dependency Injection
     details: Google Wire integration for compile-time dependency injection, improving testability and maintainability.
   - title: Production Ready
-    details: Graceful shutdown, health checks, Docker & Kubernetes deployment support, and testing utilities built in.
+    details: Liveness and readiness probes on a separate admin port, graceful shutdown that drains traffic, and Docker and Kubernetes deployment guides.
 ---
